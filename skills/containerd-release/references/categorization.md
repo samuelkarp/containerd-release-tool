@@ -24,6 +24,13 @@ This guide provides examples for categorizing pull requests and determining if t
   - Fixes to snapshotter mount options or extraction logic.
   - Remote snapshotter integrations.
 
+### `area/distribution`
+**Scope**: Image pulling, pushing, content resolution, descriptor handling, and registry interaction.
+- **Examples**:
+  - Stripping sensitive headers on descriptor URLs.
+  - Retrying registry hosts on transient network errors.
+  - OCI error body parsing from registry responses.
+
 ### `area/storage`
 **Scope**: Content store, metadata database, garbage collection, and image storage.
 - **Examples**:
@@ -36,6 +43,12 @@ This guide provides examples for categorizing pull requests and determining if t
 
 ### `area/ctr`
 **Scope**: The `ctr` command-line development tool.
+
+## How `release-tool` Categorizes Highlights
+
+1. **`area/` Prefix and Label Description**: `release-tool` groups highlights into `#### <Section>` subsections exclusively using labels prefixed with `area/`. The section title is taken directly from the GitHub label's **Description** field (e.g., label `area/runtime` with description `"Runtime"` produces `#### Runtime`). If a label description is empty, no section header is generated.
+2. **`platform/*` Labels**: `release-tool` ignores `platform/*` labels (such as `platform/windows`) for section categorization. A PR with only `platform/windows` and `impact/changelog` will appear uncategorized directly under `### Highlights` at the top. To categorize Windows highlights, always assign both the relevant functional `area/*` label (e.g., `area/runtime`) and `platform/windows`.
+3. **Dependency Repositories**: When pulling highlights from dependencies (via `match_deps`), the PR in the dependency repo must have an `area/*` label defined **with a non-empty Description** (e.g., `area/runtime` with description `"Runtime"`). If the dependency repository lacks this label or description, create it before generating release notes.
 
 ## Security-related Changes
 
@@ -53,5 +66,5 @@ Distinguishing between vulnerability fixes and security hardening is critical fo
 
 ## Best Practices
 1.  **Prefer Specificity**: If a change affects both core runtime and CRI, but is primarily motivated by a CRI bug, use `area/cri`.
-2.  **Highlight Selection**: Only use `impact/changelog` for user-facing bug fixes or significant feature improvements. **Avoid highlighting dependency updates or minor hardening.**
+2.  **Highlight Selection**: Only use `impact/changelog` for user-facing bug fixes or significant feature improvements. **Avoid highlighting dependency updates, internal code cleanups, or minor hardening.**
 3.  **Check Previous Releases**: If unsure, look at how similar PRs were categorized in previous patch releases.

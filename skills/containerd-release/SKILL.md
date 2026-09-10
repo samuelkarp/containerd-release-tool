@@ -10,7 +10,7 @@ This skill provides a structured workflow for preparing patch releases on the `r
 ## Workflow Overview
 
 1.  **Branch Setup**: Checkout the target `release/x.y` branch and ensure it is up to date with origin.
-2.  **Audit PRs**: Review all PRs merged since the last tag.
+2.  **Audit PRs & Commits**: Review all PRs and commits merged since the last tag. Check for commits merged from private security forks (e.g. `git log <last-tag>..HEAD --merges --grep="Merge commit from fork"`).
 3.  **Research and Propose**: Identify PRs that need labels or `release-note` blocks. **Present a table of proposed changes and obtain user approval before acting.**
 4.  **Labeling & Highlights**: Apply approved changes to PRs.
 5.  **TOML Preparation**: Create a new version TOML file in `releases/`.
@@ -117,17 +117,23 @@ Use `gh pr edit` to append a markdown block to the end of the PR body. Do not ch
 
 ### Writing Style:
 - Use short, descriptive phrases starting with a present-tense verb.
+- **User-Facing Impact Over Implementation Details:** Notes must describe the observable symptom or benefit to the user or operator, rather than internal Go mechanics or language semantics (e.g., do not mention "typed-nil Stringers" when the user impact is "missing error messages in OpenTelemetry trace attributes").
+- **Focus on Impact (What, not How):** Describe *what* problem was solved rather than *how* the code was changed.
+  * *Incorrect:* `Forward netns_path, rootfs, and annotations in sandbox Create`
+  * *Correct:* `Fix sandbox creation via gRPC proxy dropping configuration fields`
+  * *Incorrect:* `Apply configured timeouts to shim loading and cleanup to prevent unresponsive shims from stalling daemon startup`
+  * *Correct:* `Avoid containerd startup hangs when loading shims`
+- **Use Established Verb Patterns (Do Not Invent Phrasing):** Stick to containerd's standard vocabulary and established phrasing patterns seen across historical releases. Avoid wordy descriptions and do not invent artificial jargon (e.g., use "containerd startup hangs" rather than "daemon startup stalls"):
+  * **Bug / Hang fixes:** `Avoid <behavior> when <condition>` or `Fix <problem> caused by <cause>` (e.g., `Avoid containerd startup hangs when loading shims`, `Fix container startup failures caused by concurrent task RPC timeouts during slow container creation`).
+  * **Error improvements:** `Add context to error when <condition>` or `Improve <component> error message when <condition>` (e.g., `Add context to error when shim delete times out`, `Improve mount error message`).
+  * **Security hardening:** `Apply hardening to <action> when <condition>` (e.g., `Apply hardening to strip sensitive authentication headers when fetching descriptor URLs`).
+  * **Compatibility:** `Fix <platform> compatibility on <condition>` (e.g., `Fix Windows Server 2022 container compatibility on host builds newer than the latest LTSC`).
 - **Avoid Redundant Subject Prefixes:** Do not include redundant package or area prefixes (like `runtime:`, `cri:`, `seccomp:`, `apparmor:`) in the release-note block. Since the `release-tool` automatically categorizes highlights under headers like `#### Runtime` or `#### Container Runtime Interface (CRI)`, these prefixes are redundant. Start directly with the verb or integrate the component name naturally into the description.
   * *Incorrect:* `runtime: Support both "volatile" and "fsync=volatile" mount options...`
   * *Correct:* `Support both "volatile" and "fsync=volatile" mount options...`
   * *Incorrect:* `apparmor: Set abi conditionally to support AppArmor versions < 3.0`
   * *Correct:* `Set AppArmor abi conditionally to support versions < 3.0`
-- For security-hardening fixes, explicitly use "Apply hardening to..." (e.g., `Apply hardening to block AF_ALG in default socket policy`).
-- For compatibility fixes, frame the description around "support" and compatibility rather than "breaking" to avoid causing unnecessary alarm to users (e.g., `Set AppArmor abi conditionally to support versions < 3.0` instead of `avoid breaking AppArmor versions < 3.0`).
-- **Example**: `Enable mount manager in diff walking to fix layer extraction errors with some snapshotters (e.g., EROFS)` (Correct)
-- **Focus on Impact (What, not How):** Describe *what* the bug was and its impact on the user/system, rather than *how* the code was changed. Explain the problem that was solved.
-  * *Incorrect:* `Forward netns_path, rootfs, and annotations in sandbox Create`
-  * *Correct:* `Fix sandbox creation via gRPC proxy dropping configuration fields`
+- **Consult Historical Git Tag Notes:** When drafting or reviewing release notes, consult annotated git tag messages (`git cat-file -p <tag>`) across recent releases to inspect real precedent and ensure phrasing aligns with project conventions.
 
 ## 4. TOML Preparation and Security Updates
 
@@ -175,21 +181,31 @@ See also the [Getting Started](https://github.com/containerd/containerd/blob/mai
 
 ### Security Updates
 If the release contains security fixes (either for containerd itself or for dependencies), add them manually to the `preface` section:
-- For dependency updates, list the dependency name as the bullet (e.g., `spdystream`).
-- For containerd's own vulnerabilities, list `containerd` as the bullet.
-- Use the CVE ID as the link text pointing to the advisory.
+- **Preface Opening Sentence:** When security fixes are present, adjust the opening sentence from "...contains various fixes and updates." to:
+  * Singular: `...contains various fixes and updates including a security patch.`
+  * Plural: `...contains various fixes and updates including security patches.`
+- **Bullet Hierarchy:**
+  * For containerd's own vulnerabilities, list `containerd` as the bullet.
+  * For dependency updates, list the dependency name as the bullet (e.g., `spdystream`, `runc`, `go-jose`).
+- **Advisory Links & Identifiers:**
+  * Use the CVE ID as the link text when assigned: `[**CVE-YYYY-NNNNN**](https://github.com/<org>/<repo>/security/advisories/<GHSA-ID>)`.
+  * If a CVE ID has not yet been assigned or published, use the GHSA ID as the link text: `[**GHSA-xxxx-xxxx-xxxx**](https://github.com/<org>/<repo>/security/advisories/<GHSA-ID>)`.
 - **Pre-publication Links:** Include the link to the GitHub Security Advisory (GHSA) even if the advisory is currently private/draft. It will become public simultaneously with the release publication, ensuring the links work for users immediately upon release.
+- **Commits from Private Security Forks:**
+  * Commits merged from private security forks land directly as merge commits (`Merge commit from fork`) without associated public GitHub PRs.
+  * Because `release-tool` extracts highlights and categories from PR metadata and labels, fork commits do not produce entries under `### Highlights`. Instead, they appear directly in the commit log under `<details><summary>... commits</summary>`, and are denoted publicly via the `### Security Updates` section in the preface.
 
 **Example:**
 ```toml
 preface = """\
-The first patch release for containerd 2.3 contains various fixes
-and updates including a security patch.
+The fifth patch release for containerd 2.3 contains various fixes
+and updates including security patches.
 
 ### Security Updates
 
 * **containerd**
-  * [**CVE-2026-46680**](https://github.com/containerd/containerd/security/advisories/GHSA-fqw6-gf59-qr4w)
+  * [**CVE-2026-53495**](https://github.com/containerd/containerd/security/advisories/GHSA-7jxh-36q5-gcqv)
+  * [**GHSA-rp3h-jf77-q9p4**](https://github.com/containerd/containerd/security/advisories/GHSA-rp3h-jf77-q9p4)
 
 * **spdystream**
   * [**CVE-2026-35469**](https://github.com/moby/spdystream/security/advisories/GHSA-pc3f-x583-g7j2)
@@ -214,14 +230,19 @@ Assign appropriate labels using `gh pr edit --add-label`. Verify label names wit
 - `area/cri`
 - `area/runtime`
 - `area/snapshotters`
+- `area/distribution`
 - `platform/windows` (Note: use `platform/` prefix for Windows)
 
-- **Avoid Redundant Area Labels:** Ensure a PR has only one primary `area/*` or `platform/*` label unless it genuinely spans multiple distinct areas. Redundant area labels (e.g., having both `area/runtime` and `area/storage` for a storage-specific fix) will cause the PR to be listed multiple times in different sections of the generated release notes. Check the generated notes during verification to ensure no highlights are duplicated.
+### How `release-tool` Generates Sections:
+- **`area/` Prefix and Label Description Required:** `release-tool` only groups highlights into `#### <Category>` subsections using labels that begin with `area/`. The section header title is taken directly from the GitHub label's **Description** field (e.g., `area/runtime` with description `"Runtime"` generates `#### Runtime`). If a label description is empty or missing, no subsection is generated.
+- **`platform/*` Labels Do Not Categorize:** `release-tool` ignores `platform/*` labels (e.g., `platform/windows`) for section generation. If a PR has `impact/changelog` and `platform/windows` but lacks an `area/*` label, it will appear uncategorized directly under `### Highlights` at the top level.
+- **Windows Categorization:** To place Windows highlights under their proper functional section (typically `#### Runtime`), always apply both `area/runtime` and `platform/windows`.
+- **Avoid Redundant Area Labels:** Ensure a PR has only one primary `area/*` label unless it genuinely spans multiple distinct areas. Redundant area labels (e.g., having both `area/runtime` and `area/storage` for a storage-specific fix) will cause the PR to be listed multiple times in different sections of the generated release notes.
 
 ### Dependency Repositories
-When auditing a dependency repository (e.g., `containerd/nri`, `containerd/ttrpc`), you must also apply `impact/changelog`, `area/*`, and `release-note` blocks to its PRs so they are included in the main containerd release notes when the dependency is updated.
+When auditing a dependency repository (e.g., `containerd/platforms`, `containerd/nri`, `containerd/ttrpc`), you must also apply `impact/changelog`, `area/*`, and `release-note` blocks to its PRs so they are included in the main containerd release notes when the dependency is updated.
 - Use the `--repo <org>/<repo>` flag with `gh` commands if you are not in a local clone of that dependency.
-- Use an area label corresponding to the dependency (e.g., `area/nri` for the `containerd/nri` repository).
+- **Label and Description in Dependency Repo:** The dependency repository must have the `area/*` label defined **with a non-empty Description** (e.g., `area/runtime` with description `"Runtime"`). If the label or description does not exist in that repository, create it first; otherwise, the highlight will land uncategorized at the top of `### Highlights`.
 
 ## 7. Mailmap and Contributors
 
